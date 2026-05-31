@@ -135,6 +135,7 @@ UPROGS=\
 	$U/_ln\
 	$U/_ls\
 	$U/_mkdir\
+	$U/_memtest\
 	$U/_pingpong\
 	$U/_rm\
 	$U/_sh\
