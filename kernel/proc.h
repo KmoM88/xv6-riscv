@@ -76,11 +76,25 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+struct file;
+
+struct vma {
+  int valid;
+  uint64 addr;
+  int length;
+  int prot;
+  int flags;
+  struct file *file;
+  int offset;
+};
+
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
 struct proc {
   struct spinlock lock;
+  struct vma vma[16]; // VMAs for memory-mapped files
+
 
   // p->lock must be held when using these:
   enum procstate state; // Process state

@@ -116,3 +116,11 @@ sys_freemem(void)
   return count_free_bytes();
 }
 
+uint64
+sys_pgprint(void)
+{
+  struct proc *p = myproc();
+  vmprint(p->pagetable);
+  return 0;
+}
+

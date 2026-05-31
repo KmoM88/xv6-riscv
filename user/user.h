@@ -25,6 +25,11 @@ char *sys_sbrk(int, int);
 int pause(int);
 int uptime(void);
 uint64 freemem(void);
+int pgprint(void);
+void *mmap(void *, int, int, int, int, int);
+int munmap(void *, int);
+
+
 
 // ulib.c
 int stat(const char *, struct stat *);

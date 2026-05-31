@@ -288,7 +288,16 @@ kfork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  // Copy memory mapped areas (VMAs)
+  for (i = 0; i < 16; i++) {
+    if (p->vma[i].valid) {
+      np->vma[i] = p->vma[i];
+      filedup(p->vma[i].file);
+    }
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
+
 
   pid = np->pid;
 
@@ -340,10 +349,14 @@ kexit(int status)
     }
   }
 
+  // Write back and clean up memory mapped areas (VMAs)
+  vma_exit(p);
+
   begin_op();
   iput(p->cwd);
   end_op();
   p->cwd = 0;
+
 
   acquire(&wait_lock);
 

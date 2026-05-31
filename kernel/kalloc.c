@@ -23,10 +23,17 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int count[(PHYSTOP - KERNBASE) / PGSIZE];
+} kref;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&kref.lock, "kref");
+  memset(kref.count, 0, sizeof(kref.count));
   freerange(end, (void *)PHYSTOP);
 }
 
@@ -50,6 +57,16 @@ kfree(void *pa)
 
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  uint64 idx = ((uint64)pa - KERNBASE) / PGSIZE;
+  acquire(&kref.lock);
+  if (kref.count[idx] > 1) {
+    kref.count[idx]--;
+    release(&kref.lock);
+    return;
+  }
+  kref.count[idx] = 0;
+  release(&kref.lock);
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,10 +93,27 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if (r)
+  if (r) {
     memset((char *)r, 5, PGSIZE); // fill with junk
+    uint64 idx = ((uint64)r - KERNBASE) / PGSIZE;
+    acquire(&kref.lock);
+    kref.count[idx] = 1;
+    release(&kref.lock);
+  }
   return (void *)r;
 }
+
+void
+incref(void *pa)
+{
+  if ((uint64)pa < KERNBASE || (uint64)pa >= PHYSTOP)
+    return;
+  uint64 idx = ((uint64)pa - KERNBASE) / PGSIZE;
+  acquire(&kref.lock);
+  kref.count[idx]++;
+  release(&kref.lock);
+}
+
 
 // Return the total number of free memory bytes
 uint64

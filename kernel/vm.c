@@ -7,6 +7,9 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+
 
 /*
  * the kernel's page table.
@@ -301,29 +304,36 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for (i = 0; i < sz; i += PGSIZE) {
     if ((pte = walk(old, i, 0)) == 0)
       continue; // page table entry hasn't been allocated
     if ((*pte & PTE_V) == 0)
       continue; // physical page hasn't been allocated
+    
+    // Clear PTE_W and set PTE_COW for COW pages
+    if (*pte & PTE_W) {
+      *pte &= ~PTE_W;
+      *pte |= PTE_COW;
+    }
+    
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
+    
+    incref((void*)pa);
+    
+    if (mappages(new, i, PGSIZE, pa, flags) != 0) {
       goto err;
     }
   }
+  sfence_vma(); // Flush TLB of parent process since we changed mappings to read-only
   return 0;
 
 err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
@@ -353,16 +363,20 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       return -1;
 
     pa0 = walkaddr(pagetable, va0);
-    if (pa0 == 0) {
+    pte = walk(pagetable, va0, 0);
+    if (pte && (*pte & PTE_V) && (*pte & PTE_COW)) {
+      pa0 = vmfault(pagetable, va0, 0);
+    } else if (pa0 == 0) {
       if ((pa0 = vmfault(pagetable, va0, 0)) == 0) {
         return -1;
       }
+      pte = walk(pagetable, va0, 0);
     }
 
-    pte = walk(pagetable, va0, 0);
     // forbid copyout over read-only user text pages.
-    if ((*pte & PTE_W) == 0)
+    if (pte == 0 || (*pte & PTE_W) == 0)
       return -1;
+
 
     n = PGSIZE - (dstva - va0);
     if (n > len)
@@ -456,18 +470,106 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
 {
   uint64 mem;
   struct proc *p = myproc();
+  pte_t *pte;
 
-  if (va >= p->sz)
-    return 0;
   va = PGROUNDDOWN(va);
-  if (ismapped(pagetable, va)) {
-    return 0;
+
+  // 1. Check if it is a Copy-On-Write (COW) fault
+  pte = walk(pagetable, va, 0);
+  if (pte && (*pte & PTE_V) && (*pte & PTE_COW)) {
+    uint64 pa = PTE2PA(*pte);
+    uint64 flags = PTE_FLAGS(*pte);
+    
+    // Check if the physical page is shared (ref count > 1)
+    extern struct {
+      struct spinlock lock;
+      int count[(PHYSTOP - KERNBASE) / PGSIZE];
+    } kref;
+    
+    uint64 idx = (pa - KERNBASE) / PGSIZE;
+    int shared = 0;
+    acquire(&kref.lock);
+    if (kref.count[idx] > 1) {
+      shared = 1;
+    }
+    release(&kref.lock);
+    
+    if (shared) {
+      // Page is shared: allocate a new page and copy content
+      mem = (uint64)kalloc();
+      if (mem == 0)
+        return 0;
+      memmove((void*)mem, (void*)pa, PGSIZE);
+      
+      // Map child/parent page writable and clear COW flag
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      
+      *pte = PA2PTE(mem) | flags;
+      
+      // Free old physical page (decrements reference count)
+      kfree((void*)pa);
+      
+      sfence_vma();
+      return mem;
+    } else {
+      // Page is no longer shared: restore PTE_W directly
+      flags |= PTE_W;
+      flags &= ~PTE_COW;
+      *pte = PA2PTE(pa) | flags;
+      sfence_vma();
+      return pa;
+    }
   }
+
+  // 2. Check if it is an mmap fault
+  struct vma *v = 0;
+  if (p) {
+    for (int i = 0; i < 16; i++) {
+      if (p->vma[i].valid && va >= p->vma[i].addr && va < p->vma[i].addr + p->vma[i].length) {
+        v = &p->vma[i];
+        break;
+      }
+    }
+  }
+  
+  if (v) {
+    if (ismapped(pagetable, va))
+      return 0;
+      
+    mem = (uint64)kalloc();
+    if (mem == 0)
+      return 0;
+    memset((void*)mem, 0, PGSIZE);
+    
+    // Read the 4KB block from the file
+    ilock(v->file->ip);
+    readi(v->file->ip, 0, mem, va - v->addr + v->offset, PGSIZE);
+    iunlock(v->file->ip);
+
+    
+    int pte_flags = PTE_U | PTE_V;
+    if (v->prot & 1) pte_flags |= PTE_R;
+    if (v->prot & 2) pte_flags |= PTE_W;
+    
+    if (mappages(pagetable, va, PGSIZE, mem, pte_flags) != 0) {
+      kfree((void*)mem);
+      return 0;
+    }
+    return mem;
+  }
+
+  // 3. Check if it is a lazy allocation fault (heap)
+  if (p == 0 || va >= p->sz)
+    return 0;
+  if (ismapped(pagetable, va))
+    return 0;
+    
   mem = (uint64)kalloc();
   if (mem == 0)
     return 0;
   memset((void *)mem, 0, PGSIZE);
-  if (mappages(p->pagetable, va, PGSIZE, mem, PTE_W | PTE_U | PTE_R) != 0) {
+  if (mappages(pagetable, va, PGSIZE, mem, PTE_W | PTE_U | PTE_R) != 0) {
     kfree((void *)mem);
     return 0;
   }
@@ -486,6 +588,7 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
 
 // Helper function to recursively print the Sv39 page table
 void

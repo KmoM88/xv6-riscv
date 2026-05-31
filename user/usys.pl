@@ -43,3 +43,8 @@ entry("sbrk");
 entry("pause");
 entry("uptime");
 entry("freemem");
+entry("pgprint");
+entry("mmap");
+entry("munmap");
+
+

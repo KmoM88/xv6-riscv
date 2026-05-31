@@ -103,6 +103,11 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_freemem(void);
+extern uint64 sys_pgprint(void);
+extern uint64 sys_mmap(void);
+extern uint64 sys_munmap(void);
+
+
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -130,6 +135,11 @@ static uint64 (*syscalls[])(void) = {
   [SYS_mkdir]   sys_mkdir,
   [SYS_close]   sys_close,
   [SYS_freemem] sys_freemem,
+  [SYS_pgprint] sys_pgprint,
+  [SYS_mmap]    sys_mmap,
+  [SYS_munmap]  sys_munmap,
+
+
   // clang-format on
 };
 

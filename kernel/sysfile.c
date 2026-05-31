@@ -504,3 +504,161 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int length;
+  int prot;
+  int flags;
+  int fd;
+  int offset;
+  struct file *f;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);
+  argint(1, &length);
+  argint(2, &prot);
+  argint(3, &flags);
+  argint(4, &fd);
+  argint(5, &offset);
+
+  // Validate file descriptor
+  if (fd < 0 || fd >= NOFILE || (f = p->ofile[fd]) == 0)
+    return -1;
+
+  // MAP_SHARED (0x01) requires write permission on the file if mapping PROT_WRITE (2)
+  if ((prot & 2) && f->writable == 0 && (flags & 0x01))
+    return -1;
+
+  // Find a free VMA slot
+  struct vma *v = 0;
+  for (int i = 0; i < 16; i++) {
+    if (p->vma[i].valid == 0) {
+      v = &p->vma[i];
+      break;
+    }
+  }
+  if (v == 0)
+    return -1;
+
+  // Find a free virtual address range.
+  // Start at 0x40000000 (1GB) and find a slot that doesn't overlap
+  uint64 va = 0x40000000;
+  for (int i = 0; i < 16; i++) {
+    if (p->vma[i].valid) {
+      uint64 end_v = p->vma[i].addr + p->vma[i].length;
+      if (end_v > va)
+        va = PGROUNDUP(end_v);
+    }
+  }
+
+  // Populate VMA details
+  v->valid = 1;
+  v->addr = va;
+  v->length = PGROUNDUP(length);
+  v->prot = prot;
+  v->flags = flags;
+  v->file = f;
+  v->offset = offset;
+
+  // Increment file reference count
+  filedup(f);
+
+  return va;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);
+  argint(1, &length);
+
+  // Find the VMA containing this address
+  struct vma *v = 0;
+  for (int i = 0; i < 16; i++) {
+    if (p->vma[i].valid && addr >= p->vma[i].addr && addr < p->vma[i].addr + p->vma[i].length) {
+      v = &p->vma[i];
+      break;
+    }
+  }
+  if (v == 0)
+    return -1;
+
+  length = PGROUNDUP(length);
+
+  // Write back dirty pages if MAP_SHARED (0x01)
+  if (v->flags & 0x01) {
+    uint64 cur = addr;
+    uint64 end = addr + length;
+    while (cur < end) {
+      pte_t *pte = walk(p->pagetable, cur, 0);
+      if (pte && (*pte & PTE_V) && (*pte & PTE_D)) {
+        uint64 pa = PTE2PA(*pte);
+        begin_op();
+        ilock(v->file->ip);
+        writei(v->file->ip, 0, pa, cur - v->addr + v->offset, PGSIZE);
+        iunlock(v->file->ip);
+        end_op();
+        // Clear dirty bit
+        *pte &= ~PTE_D;
+      }
+      cur += PGSIZE;
+    }
+  }
+
+  // Unmap pages
+  uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+
+  // Shrink or free VMA
+  if (addr == v->addr && length == v->length) {
+    fileclose(v->file);
+    v->valid = 0;
+  } else {
+    if (addr == v->addr) {
+      v->addr += length;
+      v->length -= length;
+      v->offset += length;
+    } else if (addr + length == v->addr + v->length) {
+      v->length -= length;
+    }
+  }
+
+  return 0;
+}
+
+void
+vma_exit(struct proc *p)
+{
+  for (int i = 0; i < 16; i++) {
+    if (p->vma[i].valid) {
+      struct vma *v = &p->vma[i];
+      // Write back dirty pages if MAP_SHARED
+      if (v->flags & 0x01) {
+        uint64 cur = v->addr;
+        uint64 end = v->addr + v->length;
+        while (cur < end) {
+          pte_t *pte = walk(p->pagetable, cur, 0);
+          if (pte && (*pte & PTE_V) && (*pte & PTE_D)) {
+            uint64 pa = PTE2PA(*pte);
+            begin_op();
+            ilock(v->file->ip);
+            writei(v->file->ip, 0, pa, cur - v->addr + v->offset, PGSIZE);
+            iunlock(v->file->ip);
+            end_op();
+          }
+          cur += PGSIZE;
+        }
+      }
+      uvmunmap(p->pagetable, v->addr, v->length / PGSIZE, 1);
+      fileclose(v->file);
+      v->valid = 0;
+    }
+  }
+}
+

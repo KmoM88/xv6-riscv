@@ -148,6 +148,8 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
 	$U/_bttest\
+	$U/_sbrktest\
+	$U/_mmaptest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -61,6 +61,10 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
 uint64          count_free_bytes(void);
+void            incref(void *);
+void            vma_exit(struct proc *);
+
+
 
 // log.c
 void            initlog(int, struct superblock*);
