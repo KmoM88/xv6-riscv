@@ -528,6 +528,8 @@ forkret(void)
     if (p->trapframe->a0 == -1) {
       panic("exec");
     }
+    // Print the page table of the first process (init)!
+    vmprint(p->pagetable);
   }
 
   // return to user space, mimicing usertrap()'s return.

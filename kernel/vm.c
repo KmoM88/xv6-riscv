@@ -486,3 +486,36 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
+// Helper function to recursively print the Sv39 page table
+void
+_vmprint(pagetable_t pagetable, int level)
+{
+  // Sv39 page tables have 512 entries
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if (pte & PTE_V) {
+      // Print the indents based on the tree level
+      for (int l = 0; l < level; l++) {
+        printf(".. ");
+      }
+      uint64 pa = PTE2PA(pte);
+      printf("..%d: pte %p pa %p\n", i, (void*)pte, (void*)pa);
+
+      // In RISC-V Sv39, a leaf PTE has R, W, or X bits set.
+      // If none of these bits are set, it points to another page table page.
+      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+        _vmprint((pagetable_t)pa, level + 1);
+      }
+    }
+  }
+}
+
+// Entry point to print the page table tree
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", (void*)pagetable);
+  _vmprint(pagetable, 0);
+}
+
