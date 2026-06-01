@@ -662,3 +662,48 @@ vma_exit(struct proc *p)
   }
 }
 
+uint64
+sys_ethsend(void)
+{
+  uint64 addr;
+  int len;
+
+  argaddr(0, &addr);
+  argint(1, &len);
+
+  if (len < 0 || len > 1518)
+    return -1;
+
+  // Copy user packet data into temporary kernel-space buffer
+  char kbuf[1518];
+  struct proc *p = myproc();
+  if (copyin(p->pagetable, kbuf, addr, len) < 0)
+    return -1;
+
+  return ethtransmit(kbuf, len);
+}
+
+uint64
+sys_ethrecv(void)
+{
+  uint64 addr;
+  int max_len;
+
+  argaddr(0, &addr);
+  argint(1, &max_len);
+
+  if (max_len < 0 || max_len > 1518)
+    return -1;
+
+  char kbuf[1518];
+  int n = ethreceive(kbuf, max_len);
+  if (n < 0)
+    return -1;
+
+  struct proc *p = myproc();
+  if (copyout(p->pagetable, addr, kbuf, n) < 0)
+    return -1;
+
+  return n;
+}
+

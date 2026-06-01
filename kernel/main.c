@@ -28,6 +28,7 @@ main()
     iinit();            // inode table
     fileinit();         // file table
     virtio_disk_init(); // emulated hard disk
+    ethinit();          // simulated loopback Ethernet card
     userinit();         // first user process
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
     started = 1;

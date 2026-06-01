@@ -24,6 +24,8 @@
 #define SYS_pgprint 23
 #define SYS_mmap 24
 #define SYS_munmap 25
+#define SYS_ethsend 26
+#define SYS_ethrecv 27
 
 
 

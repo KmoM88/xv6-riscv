@@ -155,6 +155,14 @@ void            uartinit(void);
 void            uartintr(void);
 void            uartwrite(char [], int);
 void            uartputc_sync(int);
+void            uartpoll(void);
+
+// eth.c
+void            ethinit(void);
+int             ethtransmit(char *, int);
+void            ethintr(void);
+int             ethreceive(char *, int);
+
 
 // vm.c
 void            kvminit(void);

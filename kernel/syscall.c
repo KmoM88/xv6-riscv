@@ -106,6 +106,8 @@ extern uint64 sys_freemem(void);
 extern uint64 sys_pgprint(void);
 extern uint64 sys_mmap(void);
 extern uint64 sys_munmap(void);
+extern uint64 sys_ethsend(void);
+extern uint64 sys_ethrecv(void);
 
 
 
@@ -138,6 +140,8 @@ static uint64 (*syscalls[])(void) = {
   [SYS_pgprint] sys_pgprint,
   [SYS_mmap]    sys_mmap,
   [SYS_munmap]  sys_munmap,
+  [SYS_ethsend] sys_ethsend,
+  [SYS_ethrecv] sys_ethrecv,
 
 
   // clang-format on

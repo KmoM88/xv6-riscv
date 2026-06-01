@@ -28,6 +28,8 @@ uint64 freemem(void);
 int pgprint(void);
 void *mmap(void *, int, int, int, int, int);
 int munmap(void *, int);
+int ethsend(void *, int);
+int ethrecv(void *, int);
 
 
 

@@ -171,6 +171,9 @@ clockintr()
     ticks++;
     wakeup(&ticks);
     release(&tickslock);
+
+    // Poll the UART device since interrupts are disabled
+    uartpoll();
   }
 
   // ask for the next timer interrupt. this also clears

@@ -46,5 +46,7 @@ entry("freemem");
 entry("pgprint");
 entry("mmap");
 entry("munmap");
+entry("ethsend");
+entry("ethrecv");
 
 

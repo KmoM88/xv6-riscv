@@ -67,15 +67,14 @@ uartinit(void)
   // reset and enable FIFOs.
   WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
 
-  // enable transmit and receive interrupts.
-  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+  // disable all transmit and receive interrupts for polling mode.
+  WriteReg(IER, 0x00);
 
   initlock(&tx_lock, "uart");
 }
 
 // transmit buf[] to the uart. it blocks if the
-// uart is busy, so it cannot be called from
-// interrupts, only from write() system calls.
+// uart is busy by spin-polling LSR_TX_IDLE, without using interrupts or sleep().
 void
 uartwrite(char buf[], int n)
 {
@@ -83,15 +82,12 @@ uartwrite(char buf[], int n)
 
   int i = 0;
   while (i < n) {
-    while (tx_busy != 0) {
-      // wait for a UART transmit-complete interrupt
-      // to set tx_busy to 0.
-      sleep(&tx_chan, &tx_lock);
-    }
+    // wait for UART to be ready to accept a character (Transmit Holding Register empty).
+    while ((ReadReg(LSR) & LSR_TX_IDLE) == 0)
+      ; // spin
 
     WriteReg(THR, buf[i]);
     i += 1;
-    tx_busy = 1;
   }
 
   release(&tx_lock);
@@ -150,6 +146,19 @@ uartintr(void)
   }
   release(&tx_lock);
 
+  // read and process incoming characters, if any.
+  while (1) {
+    int c = uartgetc();
+    if (c == -1)
+      break;
+    consoleintr(c);
+  }
+}
+
+// poll the UART for incoming characters and deliver them to the console
+void
+uartpoll(void)
+{
   // read and process incoming characters, if any.
   while (1) {
     int c = uartgetc();
