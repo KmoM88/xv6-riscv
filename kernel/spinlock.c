@@ -41,6 +41,24 @@ acquire(struct spinlock *lk)
   lk->cpu = mycpu();
 }
 
+// Try to acquire the lock without spinning (non-blocking).
+// Returns 1 on success, 0 on failure.
+int
+try_acquire(struct spinlock *lk)
+{
+  push_off(); // disable interrupts to avoid deadlock.
+  if (holding(lk))
+    panic("try_acquire");
+
+  if (__atomic_exchange_n(&lk->locked, 1, __ATOMIC_ACQUIRE) == 0) {
+    lk->cpu = mycpu();
+    return 1; // Success
+  }
+
+  pop_off();
+  return 0; // Failed
+}
+
 // Release the lock.
 void
 release(struct spinlock *lk)

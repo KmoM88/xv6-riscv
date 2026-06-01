@@ -46,7 +46,7 @@ thread_init(void)
 void 
 thread_schedule(void)
 {
-  struct thread *t, *next = 0;
+  struct thread *next = 0;
   
   // Look for a RUNNABLE thread starting from the next slot to be fair
   int start_idx = (current_thread - all_threads + 1) % MAX_THREADS;

@@ -441,6 +441,7 @@ scheduler(void)
   struct cpu *c = mycpu();
 
   c->proc = 0;
+  c->old_proc = 0;
   for (;;) {
     // The most recent process to run may have had interrupts
     // turned off; enable them to avoid a deadlock if all
@@ -463,6 +464,7 @@ scheduler(void)
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        p = c->proc;
         c->proc = 0;
         found = 1;
       }
@@ -497,9 +499,40 @@ sched(void)
   if (intr_get())
     panic("sched interruptible");
 
+  // Direct context switching: scan for a RUNNABLE process
+  struct proc *next_p = 0;
+  int start_idx = (p - proc + 1) % NPROC;
+  for (int i = 0; i < NPROC; i++) {
+    int idx = (start_idx + i) % NPROC;
+    struct proc *candidate = &proc[idx];
+    if (candidate != p && candidate->state == RUNNABLE) {
+      if (try_acquire(&candidate->lock)) {
+        if (candidate->state == RUNNABLE) {
+          next_p = candidate;
+          break;
+        }
+        release(&candidate->lock);
+      }
+    }
+  }
+
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  if (next_p) {
+    next_p->state = RUNNING;
+    mycpu()->proc = next_p;
+    mycpu()->old_proc = p;
+    swtch(&p->context, &next_p->context);
+  } else {
+    swtch(&p->context, &mycpu()->context);
+  }
   mycpu()->intena = intena;
+
+  // Release the lock of the outgoing process if scheduled directly
+  struct proc *old = mycpu()->old_proc;
+  if (old) {
+    mycpu()->old_proc = 0;
+    release(&old->lock);
+  }
 }
 
 // Give up the CPU for one scheduling round.
@@ -522,7 +555,14 @@ forkret(void)
   static int first = 1;
   struct proc *p = myproc();
 
-  // Still holding p->lock from scheduler.
+  // Release the lock of the outgoing process if scheduled directly
+  struct proc *old = mycpu()->old_proc;
+  if (old) {
+    mycpu()->old_proc = 0;
+    release(&old->lock);
+  }
+
+  // Still holding p->lock from scheduler or direct schedule.
   release(&p->lock);
 
   if (first) {
