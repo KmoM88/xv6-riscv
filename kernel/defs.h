@@ -121,6 +121,12 @@ void            release(struct spinlock*);
 void            push_off(void);
 void            pop_off(void);
 
+// sem.c
+void            semainit(void);
+int             sema_init(int, int);
+int             sema_down(int);
+int             sema_up(int);
+
 // sleeplock.c
 void            acquiresleep(struct sleeplock*);
 void            releasesleep(struct sleeplock*);

@@ -26,6 +26,9 @@
 #define SYS_munmap 25
 #define SYS_ethsend 26
 #define SYS_ethrecv 27
+#define SYS_seminit 28
+#define SYS_semdown 29
+#define SYS_semup   30
 
 
 

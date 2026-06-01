@@ -30,6 +30,9 @@ void *mmap(void *, int, int, int, int, int);
 int munmap(void *, int);
 int ethsend(void *, int);
 int ethrecv(void *, int);
+int seminit(int, int);
+int semdown(int);
+int semup(int);
 
 
 

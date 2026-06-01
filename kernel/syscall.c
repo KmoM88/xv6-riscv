@@ -108,6 +108,9 @@ extern uint64 sys_mmap(void);
 extern uint64 sys_munmap(void);
 extern uint64 sys_ethsend(void);
 extern uint64 sys_ethrecv(void);
+extern uint64 sys_seminit(void);
+extern uint64 sys_semdown(void);
+extern uint64 sys_semup(void);
 
 
 
@@ -142,6 +145,9 @@ static uint64 (*syscalls[])(void) = {
   [SYS_munmap]  sys_munmap,
   [SYS_ethsend] sys_ethsend,
   [SYS_ethrecv] sys_ethrecv,
+  [SYS_seminit] sys_seminit,
+  [SYS_semdown] sys_semdown,
+  [SYS_semup]   sys_semup,
 
 
   // clang-format on

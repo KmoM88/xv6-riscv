@@ -707,3 +707,28 @@ sys_ethrecv(void)
   return n;
 }
 
+uint64
+sys_seminit(void)
+{
+  int id, val;
+  argint(0, &id);
+  argint(1, &val);
+  return sema_init(id, val);
+}
+
+uint64
+sys_semdown(void)
+{
+  int id;
+  argint(0, &id);
+  return sema_down(id);
+}
+
+uint64
+sys_semup(void)
+{
+  int id;
+  argint(0, &id);
+  return sema_up(id);
+}
+

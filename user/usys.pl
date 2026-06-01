@@ -48,5 +48,8 @@ entry("mmap");
 entry("munmap");
 entry("ethsend");
 entry("ethrecv");
+entry("seminit");
+entry("semdown");
+entry("semup");
 
 
