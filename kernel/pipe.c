@@ -11,7 +11,8 @@
 #define PIPESIZE 512
 
 struct pipe {
-  struct spinlock lock;
+  struct spinlock read_lock;
+  struct spinlock write_lock;
   char data[PIPESIZE];
   uint nread;    // number of bytes read
   uint nwrite;   // number of bytes written
@@ -34,7 +35,8 @@ pipealloc(struct file **f0, struct file **f1)
   pi->writeopen = 1;
   pi->nwrite = 0;
   pi->nread = 0;
-  initlock(&pi->lock, "pipe");
+  initlock(&pi->read_lock, "piperead");
+  initlock(&pi->write_lock, "pipewrite");
   (*f0)->type = FD_PIPE;
   (*f0)->readable = 1;
   (*f0)->writable = 0;
@@ -58,7 +60,8 @@ bad:
 void
 pipeclose(struct pipe *pi, int writable)
 {
-  acquire(&pi->lock);
+  acquire(&pi->read_lock);
+  acquire(&pi->write_lock);
   if (writable) {
     pi->writeopen = 0;
     wakeup(&pi->nread);
@@ -67,10 +70,13 @@ pipeclose(struct pipe *pi, int writable)
     wakeup(&pi->nwrite);
   }
   if (pi->readopen == 0 && pi->writeopen == 0) {
-    release(&pi->lock);
+    release(&pi->write_lock);
+    release(&pi->read_lock);
     kfree((char *)pi);
-  } else
-    release(&pi->lock);
+  } else {
+    release(&pi->write_lock);
+    release(&pi->read_lock);
+  }
 }
 
 int
@@ -79,25 +85,46 @@ pipewrite(struct pipe *pi, uint64 addr, int n)
   int i = 0;
   struct proc *pr = myproc();
 
-  acquire(&pi->lock);
+  acquire(&pi->write_lock);
   while (i < n) {
     if (pi->readopen == 0 || killed(pr)) {
-      release(&pi->lock);
+      release(&pi->write_lock);
       return -1;
     }
     if (pi->nwrite == pi->nread + PIPESIZE) { //DOC: pipewrite-full
+      // Wake up the reader since the pipe is full and we need them to read.
+      // Release write_lock first to avoid deadlock.
+      release(&pi->write_lock);
+      acquire(&pi->read_lock);
       wakeup(&pi->nread);
-      sleep(&pi->nwrite, &pi->lock);
+      release(&pi->read_lock);
+
+      acquire(&pi->write_lock);
+      // Re-check conditions after re-acquiring the lock
+      if (pi->readopen == 0 || killed(pr)) {
+        release(&pi->write_lock);
+        return i > 0 ? i : -1;
+      }
+      if (pi->nwrite == pi->nread + PIPESIZE) {
+        sleep(&pi->nwrite, &pi->write_lock);
+      }
     } else {
       char ch;
       if (copyin(pr->pagetable, &ch, addr + i, 1) == -1)
         break;
-      pi->data[pi->nwrite++ % PIPESIZE] = ch;
+      pi->data[pi->nwrite % PIPESIZE] = ch;
+      pi->nwrite++;
       i++;
     }
   }
-  wakeup(&pi->nread);
-  release(&pi->lock);
+  release(&pi->write_lock);
+
+  // Wake up reader since we wrote some bytes.
+  if (i > 0) {
+    acquire(&pi->read_lock);
+    wakeup(&pi->nread);
+    release(&pi->read_lock);
+  }
 
   return i;
 }
@@ -109,13 +136,13 @@ piperead(struct pipe *pi, uint64 addr, int n)
   struct proc *pr = myproc();
   char ch;
 
-  acquire(&pi->lock);
+  acquire(&pi->read_lock);
   while (pi->nread == pi->nwrite && pi->writeopen) { //DOC: pipe-empty
     if (killed(pr)) {
-      release(&pi->lock);
+      release(&pi->read_lock);
       return -1;
     }
-    sleep(&pi->nread, &pi->lock); //DOC: piperead-sleep
+    sleep(&pi->nread, &pi->read_lock); //DOC: piperead-sleep
   }
   for (i = 0; i < n; i++) { //DOC: piperead-copy
     if (pi->nread == pi->nwrite)
@@ -128,7 +155,15 @@ piperead(struct pipe *pi, uint64 addr, int n)
     }
     pi->nread++;
   }
-  wakeup(&pi->nwrite); //DOC: piperead-wakeup
-  release(&pi->lock);
+  release(&pi->read_lock);
+
+  // Wake up writer since we read some bytes and freed up space.
+  if (i > 0) {
+    acquire(&pi->write_lock);
+    wakeup(&pi->nwrite);
+    release(&pi->write_lock);
+  }
+
   return i;
 }
+
