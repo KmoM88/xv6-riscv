@@ -111,6 +111,7 @@ extern uint64 sys_ethrecv(void);
 extern uint64 sys_seminit(void);
 extern uint64 sys_semdown(void);
 extern uint64 sys_semup(void);
+extern uint64 sys_symlink(void);
 
 
 
@@ -148,6 +149,7 @@ static uint64 (*syscalls[])(void) = {
   [SYS_seminit] sys_seminit,
   [SYS_semdown] sys_semdown,
   [SYS_semup]   sys_semup,
+  [SYS_symlink] sys_symlink,
 
 
   // clang-format on

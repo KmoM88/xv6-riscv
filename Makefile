@@ -164,6 +164,7 @@ UPROGS=\
 	$U/_ethtest\
 	$U/_uthread\
 	$U/_sematest\
+	$U/_symlinktest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

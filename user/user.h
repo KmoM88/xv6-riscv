@@ -33,6 +33,7 @@ int ethrecv(void *, int);
 int seminit(int, int);
 int semdown(int);
 int semup(int);
+int symlink(const char *, const char *);
 
 
 

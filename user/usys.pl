@@ -51,5 +51,6 @@ entry("ethrecv");
 entry("seminit");
 entry("semdown");
 entry("semup");
+entry("symlink");
 
 

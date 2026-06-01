@@ -29,6 +29,7 @@
 #define SYS_seminit 28
 #define SYS_semdown 29
 #define SYS_semup   30
+#define SYS_symlink 31
 
 
 
