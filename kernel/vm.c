@@ -472,6 +472,9 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
   struct proc *p = myproc();
   pte_t *pte;
 
+  if (va >= MAXVA)
+    return 0;
+
   va = PGROUNDDOWN(va);
 
   // 1. Check if it is a Copy-On-Write (COW) fault
@@ -579,6 +582,8 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
 int
 ismapped(pagetable_t pagetable, uint64 va)
 {
+  if (va >= MAXVA)
+    return 0;
   pte_t *pte = walk(pagetable, va, 0);
   if (pte == 0) {
     return 0;
